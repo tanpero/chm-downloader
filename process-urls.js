@@ -1,5 +1,9 @@
 const fs = require('fs');
 
+let missingURL = [];
+
+fs.copyFileSync("info.json", "original-info.json");
+
 // 读取JSON文件
 fs.readFile('info.json', 'utf8', (err, data) => {
   if (err) {
@@ -24,10 +28,14 @@ fs.readFile('info.json', 'utf8', (err, data) => {
   });
 
   for (let i in infoArray) {
-    infoArray[i].url = "https:" + infoArray[i].url;
-
-    if (!("url" in infoArray[i])) {
-      console.log("遗漏 URL：" + infoArray[i].name)
+    if (infoArray[i].url)
+      infoArray[i].url = infoArray[i].url.replace(/^\/\//, "https://")
+    else {
+      console.log("遗漏 URL：" + infoArray[i].name);
+      missingURL.push({ 
+        name: infoArray[i].name,
+        catalog: infoArray[i].catalog,
+      });
     }
   }
 
@@ -41,5 +49,10 @@ fs.readFile('info.json', 'utf8', (err, data) => {
     } else {
       console.log("文件已成功排序并写入");
     }
+
+    fs.writeFile('missing.json', JSON.stringify(missingURL, null, 2), 'utf8', (e) => {});
   });
+
 });
+
+

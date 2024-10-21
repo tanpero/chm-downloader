@@ -3,6 +3,8 @@ const axios = require('axios');
 const path = require('path');
 const sleep = require('sleep');
 
+let notFoundList = [];
+let badGatewayList = [];
 let errorList = [];
 
 function getFileExtension(_url) {
@@ -19,6 +21,9 @@ function getFileExtension(_url) {
     return ("." + extension) || ".pdf";
 }
 
+if (!fs.existsSync("files"))
+  fs.mkdirSync("files");
+
 // 读取JSON文件
 fs.readFile('info.json', 'utf8', (err, data) => {
   if (err) {
@@ -26,56 +31,69 @@ fs.readFile('info.json', 'utf8', (err, data) => {
     return;
   }
 
-  // 解析JSON数据
   const items = JSON.parse(data);
 
-  // 遍历数组中的每个元素
   items.forEach(item => {
     const { name, url } = item;
 
-
-    // 构造文件名和文件路径
-    const filename = name.replace(/:/g, " -") + getFileExtension(url);
+    const filename = name.replace(/[:&]/g, "-").replace("?", "").replace(/[\\/]/g, " or ") + getFileExtension(url);
     const filePath = path.join('files', filename);
 
-    // 使用axios下载文件
+    if (fs.existsSync(filePath)) return;
+
+    if (!url) return;
+
     axios({
       method: 'get',
-      url: "https:" + url,
+      url: url,
       responseType: 'stream'
     })
     .then(response => {
-      // 创建并写入文件
       const writer = fs.createWriteStream(filePath);
       response.data.pipe(writer);
 
-      // 当文件写入完成时
+      sleep.usleep(100000);
+
       writer.on('finish', () => {
+        console.log("\n\n-----------\n\n");
         writer.close();
         console.log(`\n\nDownloaded and saved: ${filename}`);
       });
 
-      // 监听可能的错误
       writer.on('error', err => {
         console.error('\n\nError writing file:', err);
-        errorList.push(url)
+        errorList.push({ url, filename });
       });
     })
     .catch(error => {
-      console.error('\n\nError downloading file:', error);
-      errorList.push(url)
+      if (error.response && error.response.status === 404) {
+        notFoundList.push({ url, filename });
+      } else if (error.response && error.response.status === 502) {
+        badGatewayList.push({ url, filename });
+      } else {
+        console.error('\n\nError downloading file, when URL is ', url, "\n", error);
+        errorList.push({ url, filename });
+      }
     });
   });
 
   console.log("\n\n\n\n\n");
   console.log(errorList);
-
+  console.log(notFoundList);
+  console.log(badGatewayList);
 
   fs.writeFile('error.json', JSON.stringify(errorList, null, 2), (err) => {
     if (err) throw err;
-    console.log('Info array has been written to info.json');
+    console.log('Error array has been written to error.json');
   });
 
+  fs.writeFile('404.json', JSON.stringify(notFoundList, null, 2), (err) => {
+    if (err) throw err;
+    console.log('404 array has been written to 404.json');
+  });
+
+  fs.writeFile('502.json', JSON.stringify(badGatewayList, null, 2), (err) => {
+    if (err) throw err;
+    console.log('502 array has been written to 502.json');
+  });
 });
-
-
